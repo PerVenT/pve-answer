@@ -18,8 +18,11 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY default.toml /default.toml
 
 # Fallback identity; the entrypoint normally runs as the owner of the certs dir.
+# /etc/pve-answer/certs is deliberately absent: Docker resets an empty named
+# volume to the image directory's root ownership on every mount, which would
+# hide the owner the entrypoint derives the runtime uid from.
 RUN useradd --system --uid 10001 --no-create-home pve-answer \
-    && mkdir -p /answers /etc/pve-answer/certs \
+    && mkdir -p /answers \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8443
