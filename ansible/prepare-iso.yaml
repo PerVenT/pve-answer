@@ -1,0 +1,100 @@
+---
+# Downloads a Proxmox ISO and bakes in the answer server's URL, token and
+# certificate fingerprint. Runs on the answer server itself.
+
+- name: Prepare an auto-install ISO
+  hosts: answer_server
+  become: true
+
+  vars:
+    source_iso: "{{ iso_dir }}/{{ proxmox_iso_url | basename }}"
+    prepared_iso: >-
+      {{ iso_dir }}/{{ proxmox_iso_url | basename | splitext | first
+      }}-auto-from-http.iso
+
+  tasks:
+    - name: Fail early if the answer server is not serving
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:{{ pve_answer_port }}/health"
+        validate_certs: false
+      register: health
+      failed_when: health.status != 200
+      when: websrv_health_check | default(true) | bool
+
+    - name: Create the ISO directory
+      ansible.builtin.file:
+        path: "{{ iso_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download the Proxmox ISO
+      ansible.builtin.get_url:
+        url: "{{ proxmox_iso_url }}"
+        dest: "{{ source_iso }}"
+        mode: "0644"
+      register: iso_download
+
+    # Absent when the answer server has never run here; that is allowed.
+    - name: Look for the answer server's token and certificate
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: answer_files
+      loop:
+        - "{{ pve_answer_token_file }}"
+        - "{{ pve_answer_certs_dir }}/server.crt"
+
+    - name: Note whether both are present
+      ansible.builtin.set_fact:
+        answer_creds_present: >-
+          {{ answer_files.results | map(attribute='stat.exists') | select | list | length == 2 }}
+
+    - name: Read the auth token
+      ansible.builtin.slurp:
+        src: "{{ pve_answer_token_file }}"
+      register: answer_token
+      when: answer_creds_present | bool
+      no_log: true
+
+    - name: Read the certificate fingerprint
+      ansible.builtin.command:
+        cmd: >-
+          openssl x509 -in {{ pve_answer_certs_dir }}/server.crt
+          -noout -fingerprint -sha256
+      register: answer_fingerprint
+      changed_when: false
+      when: answer_creds_present | bool
+
+    - name: Warn that the ISO will carry no fingerprint or token
+      ansible.builtin.debug:
+        msg:
+          - "No answer server token at {{ pve_answer_token_file }} or certificate in {{ pve_answer_certs_dir }}."
+          - "The ISO is prepared without --cert-fingerprint and --answer-auth-token,"
+          - "so the installer must obtain them from DHCP option 250/251 or a DNS"
+          - "TXT record, and the answer server must accept unauthenticated requests."
+      when: not (answer_creds_present | bool)
+
+    - name: Prepare the ISO
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-auto-install-assistant prepare-iso {{ source_iso }}
+          --fetch-from http
+          --url {{ pve_answer_url }}
+          {% if answer_creds_present | bool %}
+          --cert-fingerprint {{ answer_fingerprint.stdout.split('=')[1] }}
+          --answer-auth-token {{ answer_token.content | b64decode }}
+          {% endif %}
+          --output {{ prepared_iso }}
+        creates: "{{ prepared_iso }}"
+
+    - name: Confirm the prepared ISO exists
+      ansible.builtin.stat:
+        path: "{{ prepared_iso }}"
+      register: prepared
+
+    - name: Report the prepared ISO
+      ansible.builtin.debug:
+        msg:
+          - "Prepared ISO: {{ prepared_iso }}"
+          - "Size:         {{ (prepared.stat.size / 1024 / 1024) | round(1) }} MB"
+          - "Answer URL:   {{ pve_answer_url }}"
+          - "Boot a machine from this ISO to install it automatically."

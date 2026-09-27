@@ -1,0 +1,176 @@
+---
+# Installs Docker and the assistant, starts the answer server, and reports the
+# token and fingerprint that prepare-iso.yaml needs.
+
+- name: Deploy the Proxmox answer server
+  hosts: answer_server
+  become: true
+
+  tasks:
+    # ansible_facts.architecture reports x86_64, which apt does not accept.
+    - name: Resolve the Debian architecture name
+      ansible.builtin.command:
+        cmd: dpkg --print-architecture
+      register: dpkg_arch
+      changed_when: false
+
+    - name: Remember the architecture
+      ansible.builtin.set_fact:
+        paia_arch: "{{ dpkg_arch.stdout }}"
+
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Create the apt keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download the Docker signing key
+      ansible.builtin.get_url:
+        url: >-
+          https://download.docker.com/linux/{{
+          ansible_facts.distribution | lower }}/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    # Before any cache update: a wrong entry breaks every later apt call.
+    - name: Configure the Docker apt repository
+      ansible.builtin.template:
+        src: docker.sources.j2
+        dest: /etc/apt/sources.list.d/docker.sources
+        mode: "0644"
+
+    - name: Remove the older Docker source format if present
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Check whether proxmox-auto-install-assistant is already installed
+      ansible.builtin.command:
+        cmd: dpkg-query -W -f=${Version} proxmox-auto-install-assistant
+      register: paia_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Download proxmox-auto-install-assistant
+      ansible.builtin.get_url:
+        url: >-
+          http://download.proxmox.com/debian/pve/dists/{{ paia_suite
+          }}/pve-no-subscription/binary-{{ paia_arch
+          }}/proxmox-auto-install-assistant_{{ paia_version }}_{{ paia_arch
+          }}.deb
+        dest: /tmp/proxmox-auto-install-assistant_{{ paia_version }}.deb
+        mode: "0644"
+      when: paia_installed.stdout != paia_version
+
+    - name: Install proxmox-auto-install-assistant
+      ansible.builtin.apt:
+        deb: /tmp/proxmox-auto-install-assistant_{{ paia_version }}.deb
+      when: paia_installed.stdout != paia_version
+
+    - name: Ensure Docker is enabled and running
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Create the answer server directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ pve_answer_dir }}"
+        - "{{ pve_answer_answers_dir }}"
+
+    # Decides the runtime UID; left as root the container falls back and warns.
+    - name: Create the certs directory owned by the container user
+      ansible.builtin.file:
+        path: "{{ pve_answer_certs_dir }}"
+        state: directory
+        owner: "{{ pve_answer_uid }}"
+        group: "{{ pve_answer_uid }}"
+        mode: "0700"
+
+    # Only root on the host needs to reach the token; the container reads the
+    # file itself through the secret mount.
+    - name: Create the secrets directory
+      ansible.builtin.file:
+        path: "{{ pve_answer_token_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    # force: false keeps an existing token, so prepared ISOs stay valid.
+    - name: Generate the auth token if missing
+      ansible.builtin.copy:
+        content: >-
+          provisioning:{{ lookup('ansible.builtin.password', '/dev/null',
+          chars=['hexdigits'], length=64) | lower }}
+        dest: "{{ pve_answer_token_file }}"
+        owner: "{{ pve_answer_uid }}"
+        group: "{{ pve_answer_uid }}"
+        mode: "0400"
+        force: false
+      no_log: true
+
+    # force: false keeps a default you have edited.
+    - name: Install the default answer file if missing
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../default.toml"
+        dest: "{{ pve_answer_default_answer }}"
+        mode: "0644"
+        force: false
+
+    - name: Deploy the compose file
+      ansible.builtin.template:
+        src: compose.yaml.j2
+        dest: "{{ pve_answer_dir }}/compose.yaml"
+        mode: "0644"
+
+    - name: Pull the published image and start the answer server
+      community.docker.docker_compose_v2:
+        project_src: "{{ pve_answer_dir }}"
+        pull: "{{ pve_answer_pull }}"
+        state: present
+
+    - name: Wait for the answer server to respond
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:{{ pve_answer_port }}/health"
+        validate_certs: false
+        return_content: true
+      register: health
+      until: health.status == 200
+      retries: 60
+      delay: 2
+
+    - name: Read the certificate fingerprint
+      ansible.builtin.command:
+        cmd: >-
+          openssl x509 -in {{ pve_answer_certs_dir }}/server.crt
+          -noout -fingerprint -sha256
+      register: answer_fingerprint
+      changed_when: false
+
+    - name: Report the values prepare-iso needs
+      ansible.builtin.debug:
+        msg:
+          - "URL:         {{ pve_answer_url }}"
+          - "Token:       can be read from {{ pve_answer_token_file }}"
+          - "Fingerprint: {{ answer_fingerprint.stdout.split('=')[1] }}"

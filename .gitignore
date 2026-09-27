@@ -1,0 +1,10 @@
+# Runtime data, kept next to compose.yaml on the answer server.
+answers/
+certs/
+secrets/
+__pycache__/
+.pytest_cache/
+.remember/
+*testing*
+*.log
+.ansible/

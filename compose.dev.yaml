@@ -1,0 +1,20 @@
+# Builds from this checkout instead of pulling, with the status page on.
+# Runs as pve-answer-dev on 444, so it can sit alongside the published one.
+#
+# Insecure by default: no token, no certificate, plain HTTP on
+# http://localhost:444. For TLS and auth, use compose.yaml.
+#
+#   docker compose -f compose.dev.yaml up -d --build
+services:
+  pve-answer:
+    build: .
+    container_name: pve-answer-dev
+    restart: unless-stopped
+    ports:
+      - "444:8443"
+    environment:
+      - PVE_ANSWER_DEBUG=1
+      - PVE_ANSWER_INSECURE=1
+    volumes:
+      - ${PVE_ANSWER_ANSWERS_DIR:-./answers}:/answers:ro
+      - ${PVE_ANSWER_DEFAULT_ANSWER:-./default.toml}:/default.toml:ro

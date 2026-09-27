@@ -1,0 +1,4 @@
+[answer_server]
+# The host must not be named answer_server: Ansible warns when a host and a
+# group share a name, and the group is what the playbooks target.
+<HOSTNAME> ansible_host=<IP_ADDRESS> ansible_user=<REMOTE_USER> ansible_ssh_private_key_file=<PATH_TO_PRIVATE_KEY>

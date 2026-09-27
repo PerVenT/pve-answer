@@ -1,0 +1,4 @@
+# Everything here runs in Linux containers or on Linux hosts, so text files
+# always use LF, whatever core.autocrlf says. A CRLF shebang in
+# docker-entrypoint.sh stops the container from starting.
+* text=auto eol=lf

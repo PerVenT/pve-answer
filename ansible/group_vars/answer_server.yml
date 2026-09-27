@@ -1,0 +1,36 @@
+---
+pve_answer_dir: /opt/pve-answer
+
+# Host paths mounted into the container. Each can live outside pve_answer_dir.
+pve_answer_certs_dir: "{{ pve_answer_dir }}/certs"
+pve_answer_answers_dir: "{{ pve_answer_dir }}/answers"
+pve_answer_default_answer: "{{ pve_answer_dir }}/default.toml"
+pve_answer_token_file: "{{ pve_answer_dir }}/secrets/pve_answer_token"
+
+pve_answer_image: ghcr.io/pervent/pve-answer:latest
+
+# The entrypoint runs as the owner of the certs directory, so it and the token
+# are owned by this and the container never falls back.
+pve_answer_uid: 10001
+
+# 'missing' when the image has been side-loaded with docker load.
+pve_answer_pull: always
+
+pve_answer_port: 443
+
+# Becomes the certificate's SAN entries, which the installer validates.
+pve_answer_hostnames:
+  - "{{ ansible_host }}"
+
+pve_answer_url: "https://{{ ansible_host }}/answer"
+
+# Installed from a standalone .deb; Proxmox publishes Debian suites only.
+# Available versions: http://download.proxmox.com/debian/pve/dists/trixie/
+paia_version: 9.2.8
+paia_suite: trixie
+
+iso_dir: /opt/iso-builder
+proxmox_iso_url: https://enterprise.proxmox.com/iso/proxmox-ve_9.2-1.iso
+
+# false to prepare an ISO on a host not running the answer server.
+websrv_health_check: true

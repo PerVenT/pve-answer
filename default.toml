@@ -1,0 +1,19 @@
+# No answer file matched this machine's MAC address.
+#
+# This file is intentionally empty of settings, so the installer receives an
+# answer file with no [global], [network] or [disk-setup] section, fails
+# validation, and stops. Nothing is installed automatically on a machine that
+# has not been registered.
+#
+# To provision this machine, add an answer file named after its MAC address:
+#
+#   answers/<mac>.toml       e.g. answers/bc-24-11-7b-51-aa.toml
+#
+# Separators do not matter: bc-24-11-7b-51-aa, bc:24:11:7b:51:aa and
+# BC24117B51AA all match the same NIC.
+#
+# Field reference:
+# https://pve.proxmox.com/wiki/Automated_Installation#Answer_File_Format
+#
+# To turn this into a real catch-all install later, replace these comments
+# with a complete answer file.

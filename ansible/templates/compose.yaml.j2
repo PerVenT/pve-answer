@@ -1,0 +1,26 @@
+# Managed by Ansible ({{ template_destpath | default('answer-server.yaml') }}).
+# Local edits are overwritten on the next run.
+services:
+  pve-answer:
+    image: {{ pve_answer_image }}
+    container_name: pve-answer
+    restart: unless-stopped
+    ports:
+      - "{{ pve_answer_port }}:8443"
+    environment:
+      - PVE_ANSWER_HOSTNAMES={{ pve_answer_hostnames | join(',') }}
+    secrets:
+      - pve_answer_token
+    volumes:
+      - {{ pve_answer_certs_dir }}:/etc/pve-answer/certs
+      - {{ pve_answer_answers_dir }}:/answers:ro
+      - type: bind
+        source: {{ pve_answer_default_answer }}
+        target: /default.toml
+        read_only: true
+        bind:
+          create_host_path: false
+
+secrets:
+  pve_answer_token:
+    file: {{ pve_answer_token_file }}

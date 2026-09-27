@@ -1,0 +1,36 @@
+# Host layout, next to this file unless overridden:
+#
+#   certs/                       TLS certificate and key, generated on first run
+#   secrets/pve_answer_token     auth token, created by you or Ansible (see README)
+#   answers/<mac>.toml           per-machine answer files
+#   default.toml                 served when no MAC matches
+services:
+  pve-answer:
+    # Published by CI. Use :sha-<short> to pin a build.
+    image: ghcr.io/pervent/pve-answer:latest
+    container_name: pve-answer
+    restart: unless-stopped
+    ports:
+      - "443:8443"
+    environment:
+      # Addresses the installer will use; needed the first time, for the cert.
+      - PVE_ANSWER_HOSTNAMES=${PVE_ANSWER_HOSTNAMES:-}
+      # Status page at GET /. Lists which MACs have answer files.
+      # - PVE_ANSWER_DEBUG=1
+    secrets:
+      - pve_answer_token
+    volumes:
+      # Writable: the entrypoint generates the certificate on first run.
+      - ${PVE_ANSWER_CERTS_DIR:-./certs}:/etc/pve-answer/certs
+      - ${PVE_ANSWER_ANSWERS_DIR:-./answers}:/answers:ro
+      # Must exist: Docker would otherwise create a directory in its place.
+      - type: bind
+        source: ${PVE_ANSWER_DEFAULT_ANSWER:-./default.toml}
+        target: /default.toml
+        read_only: true
+        bind:
+          create_host_path: false
+
+secrets:
+  pve_answer_token:
+    file: ${PVE_ANSWER_TOKEN_PATH:-./secrets/pve_answer_token}

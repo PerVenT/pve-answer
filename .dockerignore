@@ -1,0 +1,12 @@
+.git
+.github
+.remember
+*compose*.y*ml
+conftest.py
+answers
+certs
+secrets
+testing
+tests
+README.md
+ansible/*

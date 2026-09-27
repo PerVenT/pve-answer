@@ -1,0 +1,5 @@
+- name: Import Answer Server Playbook
+  ansible.builtin.import_playbook: answer-server.yaml
+
+- name: Import prepare-iso Playbook
+  ansible.builtin.import_playbook: prepare-iso.yaml

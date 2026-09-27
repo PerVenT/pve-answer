@@ -1,0 +1,8 @@
+# Managed by Ansible (answer-server.yaml). Local edits are overwritten.
+Types: deb
+URIs: https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}
+Suites: {{ ansible_facts.distribution_release }}
+Components: stable
+Architectures: {{ paia_arch }}
+Signed-By: /etc/apt/keyrings/docker.asc
+Enabled: yes
